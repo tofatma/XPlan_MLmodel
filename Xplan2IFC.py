@@ -140,8 +140,8 @@ def main():
     
     generator = IFCFloorplanGenerator(flurstueck_gml, xplan_file, wld3_file, tolerance=0.001)
     flurstueck_dict, baugrenze_dict, baulinie_dict = generator.get_site_geometry_dict()
-    print(flurstueck_dict)
-    print(baugrenze_dict)
+    # print(flurstueck_dict)
+    # print(baugrenze_dict)
     return {
         "flurstueck_dict": flurstueck_dict,
         "baugrenze_dict": baugrenze_dict,
