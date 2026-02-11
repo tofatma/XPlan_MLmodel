@@ -45,8 +45,7 @@
 #     copy_building(building, main_site)
 
 # file2.write("merged_.ifc")
-# print("Merge complete: merged.ifc")
-import ifcopenshell
+# print("Merge complete: merged.ifc")import ifcopenshell
 from ifcopenshell.guid import new as new_guid
 import time
 from dataclasses import dataclass
@@ -57,6 +56,7 @@ from owslib.wcs import WebCoverageService
 from Xplan2IFC import main as xplan_main
 from addgmlbuil_copy import CityGML2IFC
 import os
+import ifcopenshell
 # -------------------
 # IFC Project Creation
 # -------------------
@@ -309,12 +309,12 @@ class WCSTerrainSource:
     def download(self, bbox: List[float], out_path: str):
         clean = [round(float(v), 3) for v in bbox]
         response = self.wcs.getCoverage(
-        CoverageID=self.coverage_id,
-        subsets=[
-            ("x", clean[0], clean[2]),
-            ("y", clean[1], clean[3]),
-        ],
-        format=self.format,
+            identifier=[self.coverage_id], # Must be a list of string(s)
+            subsets=[
+                ('x', clean[0], clean[2]),
+                ('y', clean[1], clean[3]),
+            ],
+            format=self.format,
         )
 
         with open(out_path, "wb") as f:
@@ -409,22 +409,17 @@ class IFCTerrainWriter:
 def export_ifc_unified(filename="site_full.ifc"):
     from Xplan2IFC import main
 
-    # Load XPlan2IFC data
     data = main()
     flurstueck_dict = data.get("flurstueck_dict", {})
     baugrenze_dict = data.get("baugrenze_dict", {})
     baulinie_dict = data.get("baulinie_dict", {})
     generator = data["generator"]
 
-    # Collect all Flurstück points
     all_points = []
     for item in flurstueck_dict.values():
         all_points.extend(item["points"])
-
-    # Compute bounding box for WCS terrain download
     bbox = BBoxBuilder(generator.origin_x, generator.origin_y).from_local_points(all_points, margin=20.0)
 
-    # Download terrain
     wcs_source = WCSTerrainSource(WCSConfig(url="https://www.wcs.nrw.de/geobasis/wcs_nw_dgm"))
     wcs_source.download(bbox, "nrw_dgm.tif")
 
@@ -434,24 +429,20 @@ def export_ifc_unified(filename="site_full.ifc"):
     # Compute terrain Z_min for Flurstücks
     terrain_z_values = [v[2] for v in vertices]
     terrain_z_min = min(terrain_z_values)
-    print(f"Terrain Z_min: {terrain_z_min}")
 
     # Create IFC project
     ifc, context, project, site, building, storey, owner_hist, context_b, context_a = create_ifc_project()
     fill_style = create_fill_style(ifc)
     if all_points:
         terrain_z_min = min(v[2] for v in vertices)
-        create_site_solid(ifc, all_points, context, site, Z_min=terrain_z_min - 5.0)
+        create_site_solid(ifc, all_points, context, site, Z_min=terrain_z_min)
 
-    # Set vertical face height for Baugrenze/Baulinie
     Z_min_face = terrain_z_min
     Z_max_face = Z_min_face + 12.0
 
-    # Add terrain mesh to IFC
     writer = IFCTerrainWriter(ifc_model=ifc, context=context, site=site)
     writer.add_terrain(vertices, faces, name="NRW_DGM1")
 
-    # Create vertical faces for Baugrenze / Baulinie
     for geom_dict, label in [(baugrenze_dict, "BG"), (baulinie_dict, "BL")]:
         for key, item in geom_dict.items():
             points = item["points"]
@@ -464,16 +455,12 @@ def export_ifc_unified(filename="site_full.ifc"):
                     (p2[0], p2[1], Z_max_face),
                     (p1[0], p1[1], Z_max_face)
                 ]
-                # Remove duplicate points
                 unique_pts = []
                 for pt in face_pts:
                     if not unique_pts or pt != unique_pts[-1]:
                         unique_pts.append(pt)
                 if len(unique_pts) >= 3:
                     create_virtual_element(ifc, unique_pts, context, storey, name=f"{name}_face_{i+1}")
-
-    # ------------------------------
-    # Add CityGML buildings
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.join(script_dir, "data")
     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
@@ -490,7 +477,6 @@ def export_ifc_unified(filename="site_full.ifc"):
 
     buildings = transformer.ifcfile.by_type("IfcBuilding")
     for b in buildings:
-        print("Name:", b.Name, "GlobalId:", b.GlobalId)
         if b.Representation:
             print("  Has Representation with", len(b.Representation.Representations), "items")
         else:
@@ -501,4 +487,3 @@ def export_ifc_unified(filename="site_full.ifc"):
 
 if __name__ == "__main__":
     export_ifc_unified()
-

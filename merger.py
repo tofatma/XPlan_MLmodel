@@ -51,15 +51,12 @@ import ifcopenshell
 file1 = ifcopenshell.open("site_full.ifc")
 file2 = ifcopenshell.open("combined_siteplan_data.ifc")
 
-# 1. Get the target context from file1 (where we want geometry to show up)
 target_contexts = file1.by_type("IfcGeometricRepresentationContext")
 body_context = next((c for c in target_contexts if c.ContextType == "Model" or c.ContextType == "Body"), target_contexts[0])
 
-# 2. Merge elements from file2 to file1
 for element in file2.by_type("IfcProduct"):
     if element.is_a("IfcProject"): continue
     
-    # Add the element to file1
     new_el = file1.add(element)
     
     # FIX: Re-map the geometry context so it isn't "lost"
