@@ -189,33 +189,67 @@ def create_site_fill_area(ifc, points, fill_style=None):
     if fill_style:
         ifc.create_entity("IfcStyledItem", Item=fill_area, Styles=[fill_style])
     return fill_area
-def create_site_solid(ifc, points, context, site, height=12.0):
+def create_site_solid(ifc, points, context, site, Z_min=0.0):
+    """Create a solid site footprint from polygon points, with Z_max = Z_min + 12"""
+    Z_max = Z_min + 12.0  # always 12 meters above Z_min
+
     if len(points) < 3:
         return None
     if points[0] == points[-1]:
         points = points[:-1]
-    bottom_points = [(pt[0], pt[1], 0.0) for pt in points]
-    top_points = [(pt[0], pt[1], height) for pt in points]
+
+    bottom_points = [(pt[0], pt[1], Z_min) for pt in points]
+    top_points = [(pt[0], pt[1], Z_max) for pt in points]
 
     def create_ifc_points(pt_list):
         return [ifc.create_entity("IfcCartesianPoint", Coordinates=tuple(float(c) for c in pt)) for pt in pt_list]
 
     # Bottom, top, sides
-    bottom_face = ifc.create_entity("IfcFace", Bounds=[ifc.create_entity("IfcFaceOuterBound", Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(bottom_points)), Orientation=True)])
-    top_face = ifc.create_entity("IfcFace", Bounds=[ifc.create_entity("IfcFaceOuterBound", Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(top_points)), Orientation=True)])
+    bottom_face = ifc.create_entity(
+        "IfcFace",
+        Bounds=[ifc.create_entity(
+            "IfcFaceOuterBound",
+            Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(bottom_points)),
+            Orientation=True
+        )]
+    )
+    top_face = ifc.create_entity(
+        "IfcFace",
+        Bounds=[ifc.create_entity(
+            "IfcFaceOuterBound",
+            Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(top_points)),
+            Orientation=True
+        )]
+    )
     side_faces = []
     n = len(points)
     for i in range(n):
         p1b, p2b = bottom_points[i], bottom_points[(i + 1) % n]
         p1t, p2t = top_points[i], top_points[(i + 1) % n]
         side_face_pts = [p1b, p2b, p2t, p1t]
-        side_face = ifc.create_entity("IfcFace", Bounds=[ifc.create_entity("IfcFaceOuterBound", Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(side_face_pts)), Orientation=True)])
+        side_face = ifc.create_entity(
+            "IfcFace",
+            Bounds=[ifc.create_entity(
+                "IfcFaceOuterBound",
+                Bound=ifc.create_entity("IfcPolyLoop", Polygon=create_ifc_points(side_face_pts)),
+                Orientation=True
+            )]
+        )
         side_faces.append(side_face)
 
     cfs = ifc.create_entity("IfcConnectedFaceSet", CfsFaces=[bottom_face, top_face] + side_faces)
     surface_model = ifc.create_entity("IfcFaceBasedSurfaceModel", FbsmFaces=[cfs])
-    shape_rep = ifc.create_entity("IfcShapeRepresentation", ContextOfItems=context, RepresentationIdentifier="Footprint", RepresentationType="SurfaceModel", Items=[surface_model])
-    site.Representation = ifc.create_entity("IfcProductDefinitionShape", Representations=[shape_rep])
+    shape_rep = ifc.create_entity(
+        "IfcShapeRepresentation",
+        ContextOfItems=context,
+        RepresentationIdentifier="Footprint",
+        RepresentationType="SurfaceModel",
+        Items=[surface_model]
+    )
+    site.Representation = ifc.create_entity(
+        "IfcProductDefinitionShape",
+        Representations=[shape_rep]
+    )
 
 # -------------------
 # Virtual Elements (Baugrenze/Baulinie)
@@ -275,10 +309,14 @@ class WCSTerrainSource:
     def download(self, bbox: List[float], out_path: str):
         clean = [round(float(v), 3) for v in bbox]
         response = self.wcs.getCoverage(
-            identifier=[self.coverage_id],
-            subsets=[("x", clean[0], clean[2]), ("y", clean[1], clean[3])],
-            format=self.format
+        CoverageID=self.coverage_id,
+        subsets=[
+            ("x", clean[0], clean[2]),
+            ("y", clean[1], clean[3]),
+        ],
+        format=self.format,
         )
+
         with open(out_path, "wb") as f:
             f.write(response.read())
 
@@ -371,25 +409,49 @@ class IFCTerrainWriter:
 def export_ifc_unified(filename="site_full.ifc"):
     from Xplan2IFC import main
 
-    # 1️⃣ Create project, site, building, storey
-    ifc, context, project, site, building, storey,owner_hist, context_b, context_a = create_ifc_project()
-    fill_style = create_fill_style(ifc)
-
-    # 2️⃣ Load polygon data
+    # Load XPlan2IFC data
     data = main()
     flurstueck_dict = data.get("flurstueck_dict", {})
     baugrenze_dict = data.get("baugrenze_dict", {})
     baulinie_dict = data.get("baulinie_dict", {})
+    generator = data["generator"]
 
+    # Collect all Flurstück points
     all_points = []
     for item in flurstueck_dict.values():
         all_points.extend(item["points"])
 
-    if all_points:
-        create_site_solid(ifc, all_points, context, site)
+    # Compute bounding box for WCS terrain download
+    bbox = BBoxBuilder(generator.origin_x, generator.origin_y).from_local_points(all_points, margin=20.0)
 
-    # 3️⃣ Create 3D Baugrenze / Baulinie
-    Z_min, Z_max = 0, 12
+    # Download terrain
+    wcs_source = WCSTerrainSource(WCSConfig(url="https://www.wcs.nrw.de/geobasis/wcs_nw_dgm"))
+    wcs_source.download(bbox, "nrw_dgm.tif")
+
+    terrain_mesh = TerrainMesh()
+    vertices, faces = terrain_mesh.from_geotiff("nrw_dgm.tif", generator.origin_x, generator.origin_y, step=2)
+
+    # Compute terrain Z_min for Flurstücks
+    terrain_z_values = [v[2] for v in vertices]
+    terrain_z_min = min(terrain_z_values)
+    print(f"Terrain Z_min: {terrain_z_min}")
+
+    # Create IFC project
+    ifc, context, project, site, building, storey, owner_hist, context_b, context_a = create_ifc_project()
+    fill_style = create_fill_style(ifc)
+    if all_points:
+        terrain_z_min = min(v[2] for v in vertices)
+        create_site_solid(ifc, all_points, context, site, Z_min=terrain_z_min - 5.0)
+
+    # Set vertical face height for Baugrenze/Baulinie
+    Z_min_face = terrain_z_min
+    Z_max_face = Z_min_face + 12.0
+
+    # Add terrain mesh to IFC
+    writer = IFCTerrainWriter(ifc_model=ifc, context=context, site=site)
+    writer.add_terrain(vertices, faces, name="NRW_DGM1")
+
+    # Create vertical faces for Baugrenze / Baulinie
     for geom_dict, label in [(baugrenze_dict, "BG"), (baulinie_dict, "BL")]:
         for key, item in geom_dict.items():
             points = item["points"]
@@ -397,11 +459,12 @@ def export_ifc_unified(filename="site_full.ifc"):
             for i in range(len(points) - 1):
                 p1, p2 = points[i], points[i + 1]
                 face_pts = [
-                    (p1[0], p1[1], Z_min),
-                    (p2[0], p2[1], Z_min),
-                    (p2[0], p2[1], Z_max),
-                    (p1[0], p1[1], Z_max)
+                    (p1[0], p1[1], Z_min_face),
+                    (p2[0], p2[1], Z_min_face),
+                    (p2[0], p2[1], Z_max_face),
+                    (p1[0], p1[1], Z_max_face)
                 ]
+                # Remove duplicate points
                 unique_pts = []
                 for pt in face_pts:
                     if not unique_pts or pt != unique_pts[-1]:
@@ -409,31 +472,12 @@ def export_ifc_unified(filename="site_full.ifc"):
                 if len(unique_pts) >= 3:
                     create_virtual_element(ifc, unique_pts, context, storey, name=f"{name}_face_{i+1}")
 
-    # 4️⃣ Create terrain from WCS using same generator
-    generator = data["generator"]
-    bbox = BBoxBuilder(generator.origin_x, generator.origin_y).from_local_points(
-        all_points, margin=20.0
-    )
-
-    wcs_source = WCSTerrainSource(
-        WCSConfig(url="https://www.wcs.nrw.de/geobasis/wcs_nw_dgm")
-    )
-    wcs_source.download(bbox, "nrw_dgm.tif")
-
-    terrain_mesh = TerrainMesh()
-    vertices, faces = terrain_mesh.from_geotiff(
-        "nrw_dgm.tif",
-        generator.origin_x,
-        generator.origin_y,
-        step=2
-    )
-
-    # 5️⃣ Add terrain to IFC using unified writer
-    writer = IFCTerrainWriter(ifc_model=ifc, context=context, site=site)
-    writer.add_terrain(vertices, faces, name="NRW_DGM1")
+    # ------------------------------
+    # Add CityGML buildings
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.join(script_dir, "data")
     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
+
     transformer = CityGML2IFC(
         ifcfile=ifc,
         owner_history=owner_hist,
@@ -443,6 +487,7 @@ def export_ifc_unified(filename="site_full.ifc"):
         context_axis=context_a
     )
     transformer.add_citygml(citygml_source)
+
     buildings = transformer.ifcfile.by_type("IfcBuilding")
     for b in buildings:
         print("Name:", b.Name, "GlobalId:", b.GlobalId)
@@ -451,10 +496,9 @@ def export_ifc_unified(filename="site_full.ifc"):
         else:
             print("  No Representation")
 
-        transformer.write_ifc(filename)
-        print(f"Unified IFC saved: {filename}")
+    transformer.write_ifc(filename)
+    print(f"Unified IFC saved: {filename}")
 
-# ------------------------------
 if __name__ == "__main__":
     export_ifc_unified()
 

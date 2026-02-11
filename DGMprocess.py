@@ -112,15 +112,15 @@ class WCSTerrainSource:
 
     def download(self, bbox: List[float], out_path: str):
         clean = [round(float(v), 3) for v in bbox]
-
         response = self.wcs.getCoverage(
-            identifier=[self.coverage_id],  # LIST → robust
+            identifier=self.coverage_id,   # ← string only
             subsets=[
                 ("x", clean[0], clean[2]),
                 ("y", clean[1], clean[3]),
             ],
             format=self.format,
         )
+
 
         with open(out_path, "wb") as f:
             f.write(response.read())
