@@ -251,10 +251,6 @@ def create_site_solid(ifc, points, context, site, Z_min=0.0):
         Representations=[shape_rep]
     )
 
-# -------------------
-# Virtual Elements (Baugrenze/Baulinie)
-# -------------------
-
 def create_virtual_element(ifc, points, context, storey, name="VirtualElement"):
     if len(points) < 3:
         return None
@@ -278,9 +274,6 @@ def create_virtual_element(ifc, points, context, storey, name="VirtualElement"):
     virtual = ifc.create_entity("IfcAnnotation", GlobalId=new_guid(), Name=name, ObjectPlacement=storey.ObjectPlacement, Representation=prod_def)
     ifc.create_entity("IfcRelContainedInSpatialStructure", GlobalId=new_guid(), RelatingStructure=storey, RelatedElements=[virtual])
 
-# -------------------
-# Terrain from WCS
-# -------------------
 @dataclass
 class WCSConfig:
     url: str
@@ -309,7 +302,7 @@ class WCSTerrainSource:
     def download(self, bbox: List[float], out_path: str):
         clean = [round(float(v), 3) for v in bbox]
         response = self.wcs.getCoverage(
-            identifier=[self.coverage_id], # Must be a list of string(s)
+            identifier=[self.coverage_id],
             subsets=[
                 ('x', clean[0], clean[2]),
                 ('y', clean[1], clean[3]),
@@ -473,17 +466,7 @@ def export_ifc_unified(filename="site_full.ifc"):
         context_body=context_b,
         context_axis=context_a
     )
-    transformer.add_citygml(citygml_source)
-
-    buildings = transformer.ifcfile.by_type("IfcBuilding")
-    for b in buildings:
-        if b.Representation:
-            print("  Has Representation with", len(b.Representation.Representations), "items")
-        else:
-            print("  No Representation")
-
     transformer.write_ifc(filename)
-    print(f"Unified IFC saved: {filename}")
 
 if __name__ == "__main__":
     export_ifc_unified()

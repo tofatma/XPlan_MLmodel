@@ -112,63 +112,256 @@ def get_boundingpoints(pos: ET.Element, reference_point: Tuple[float, float, flo
 def update_z_coordinates_simple(geometry_dict, new_z):
     for obj in geometry_dict.values():
         obj["points"] = [[x, y, new_z] for x, y, z in obj["points"]]
-import os
-import xml.etree.ElementTree as ET
+def CityGML2IFC(path: str, filename: str):
+    """
+    1) Read orientation_data via IFCFloorplanGenerator (unchanged).
+    2) Parse CityGML and collect <Building> elements (unchanged).
+    3) Create an in-memory IFC4 file with ifcopenshell.file(schema="IFC4X3").
+    4) Directly create OwnerHistory, Project, Units, MapConversion, Site, Floorplan, Buildings.
+    5) Write out via ifcfile.write(filename).
+    """
+    tree = ET.parse(path)
+    root = tree.getroot()
+    if root.tag == "{http://www.opengis.net/citygml/1.0}CityModel":
+        ns_citygml = "http://www.opengis.net/citygml/1.0"
+        ns_bldg    = "http://www.opengis.net/citygml/building/1.0"
+        ns_gml     = "http://www.opengis.net/gml"
+        ns_core    = "http://www.opengis.net/citygml/3.0"
+        ns_con     = "http://www.opengis.net/citygml/construction/3.0"
 
-# You need your helper functions:
-# get_boundingpoints(pos, origin), create_ifc_poly(ifcfile, points, is_loop)
+    elif root.tag == "{http://www.opengis.net/citygml/2.0}CityModel":
+        ns_citygml = "http://www.opengis.net/citygml/2.0"
+        ns_bldg    = "http://www.opengis.net/citygml/building/2.0"
+        ns_gml     = "http://www.opengis.net/gml"
+        ns_core    = "http://www.opengis.net/citygml/3.0"
+        ns_con     = "http://www.opengis.net/citygml/construction/3.0"
 
-class CityGML2IFC:
-    def __init__(self, ifcfile=None, owner_history=None, site=None, storey=None, context_body=None, context_axis=None):
-        """ Initialize the transformer with an optional existing IFC. """
-        self.ifcfile = ifcfile
-        self.owner_history = owner_history
-        self.site = site
-        self.storey = storey
-        self.context_body = context_body
-        self.context_axis = context_axis
+    elif root.tag == "{http://www.opengis.net/citygml/3.0}CityModel":
+        ns_citygml = "http://www.opengis.net/citygml/3.0"
+        ns_bldg    = "http://www.opengis.net/citygml/building/3.0"
+        ns_gml     = "http://www.opengis.net/gml/3.2"
+        ns_core    = "http://www.opengis.net/citygml/3.0"
+        ns_con     = "http://www.opengis.net/citygml/construction/3.0"
 
-    def _parse_citygml(self, path):
-        """ Parse CityGML file and return tree, root, and namespaces. """
-        tree = ET.parse(path)
-        root = tree.getroot()
-        ns = {}
-        if root.tag.endswith("CityModel"):
-            if "1.0" in root.tag:
-                ns["citygml"] = "http://www.opengis.net/citygml/1.0"
-                ns["bldg"] = "http://www.opengis.net/citygml/building/1.0"
-                ns["gml"] = "http://www.opengis.net/gml"
-                ns["core"] = "http://www.opengis.net/citygml/3.0"
-                ns["con"] = "http://www.opengis.net/citygml/construction/3.0"
-            elif "2.0" in root.tag:
-                ns["citygml"] = "http://www.opengis.net/citygml/2.0"
-                ns["bldg"] = "http://www.opengis.net/citygml/building/2.0"
-                ns["gml"] = "http://www.opengis.net/gml"
-                ns["core"] = "http://www.opengis.net/citygml/3.0"
-                ns["con"] = "http://www.opengis.net/citygml/construction/3.0"
-            elif "3.0" in root.tag:
-                ns["citygml"] = "http://www.opengis.net/citygml/3.0"
-                ns["bldg"] = "http://www.opengis.net/citygml/building/3.0"
-                ns["gml"] = "http://www.opengis.net/gml/3.2"
-                ns["core"] = "http://www.opengis.net/citygml/3.0"
-                ns["con"] = "http://www.opengis.net/citygml/construction/3.0"
+    else:
+        raise ValueError("Unsupported CityGML version or root tag.")
+    ifcfile = ifcopenshell.file(schema="IFC4X3")
+
+    creator_name   = "Fatma Ahmad (GIA)"
+    organization   = "RWTH Aachen"
+    application    = "Autodesk Revit 2025.4 (DEU)"
+    application_ver= "2025"
+    timestamp      = int(time.time())
+
+    person = ifcfile.createIfcPerson(
+        None,
+        None,
+        creator_name,
+        None,
+        None,
+        None, 
+        None,
+        None
+    )
+    org = ifcfile.createIfcOrganization(
+        None,
+        organization,
+        None,
+        None,
+        None
+    )
+
+    person_and_org = ifcfile.createIfcPersonAndOrganization(
+        ThePerson=person,
+        TheOrganization=org,
+        Roles=None
+    )
+
+    application_entity = ifcfile.createIfcApplication(
+        ApplicationDeveloper=org,
+        Version=application_ver,
+        ApplicationFullName=application,
+        ApplicationIdentifier=application
+    )
+
+    owner_history = ifcfile.createIfcOwnerHistory(
+        OwningUser=person_and_org,
+        OwningApplication=application_entity,
+        State="READWRITE",
+        ChangeAction="NOCHANGE",
+        LastModifiedDate=None,
+        LastModifyingUser=None,
+        LastModifyingApplication=None,
+        CreationDate=timestamp
+    )
+    dir_x = ifcfile.createIfcDirection((1.0, 0.0, 0.0))
+    dir_z = ifcfile.createIfcDirection((0.0, 0.0, 1.0))
+    origin_pt = ifcfile.createIfcCartesianPoint((0.0, 0.0, 0.0))
+
+    axis2placement = ifcfile.createIfcAxis2Placement3D(origin_pt, dir_z, dir_x)
+
+    axis_y = ifcfile.createIfcDirection((0.0, 1.0, 0.0))
+    geom_context = ifcfile.createIfcGeometricRepresentationContext(
+        ContextIdentifier=None,
+        ContextType="Model",
+        CoordinateSpaceDimension=3,
+        Precision=0.01,
+        WorldCoordinateSystem=axis2placement,
+        TrueNorth=axis_y
+    )
+    project_globalid = generate_ifc_guid()
+    project_obj  = ifcfile.createIfcProject(
+        GlobalId=project_globalid,
+        OwnerHistory=owner_history,
+        Name="Lageplan",
+        Description=None,
+        ObjectType=None,
+        LongName=None,
+        Phase=None,
+        RepresentationContexts=[geom_context]
+    )
+
+    length_si_unit = ifcfile.createIfcSIUnit(UnitType="LENGTHUNIT", Prefix=None, Name="METRE")
+    area_si_unit   = ifcfile.createIfcSIUnit(UnitType="AREAUNIT", Prefix=None, Name="SQUARE_METRE")
+    volume_si_unit = ifcfile.createIfcSIUnit(UnitType="VOLUMEUNIT", Prefix=None, Name="CUBIC_METRE")
+    angle_si_unit  = ifcfile.createIfcSIUnit(UnitType="PLANEANGLEUNIT", Prefix=None, Name="RADIAN")
+    mass_si_unit   = ifcfile.createIfcSIUnit(UnitType="MASSUNIT", Prefix="KILO", Name="GRAM")
+    time_si_unit   = ifcfile.createIfcSIUnit(UnitType="TIMEUNIT", Prefix=None, Name="SECOND")
+    freq_si_unit   = ifcfile.createIfcSIUnit(UnitType="FREQUENCYUNIT", Prefix=None, Name="HERTZ")
+    temp_si_unit   = ifcfile.createIfcSIUnit(UnitType="THERMODYNAMICTEMPERATUREUNIT", Prefix=None, Name="KELVIN")
+    tempc_si_unit  = ifcfile.createIfcSIUnit(UnitType="THERMODYNAMICTEMPERATUREUNIT", Prefix=None, Name="DEGREE_CELSIUS")
+    elec_i_unit    = ifcfile.createIfcSIUnit(UnitType="ELECTRICCURRENTUNIT", Prefix=None, Name="AMPERE")
+    elec_v_unit    = ifcfile.createIfcSIUnit(UnitType="ELECTRICVOLTAGEUNIT", Prefix=None, Name="VOLT")
+    power_unit     = ifcfile.createIfcSIUnit(UnitType="POWERUNIT", Prefix=None, Name="WATT")
+    force_unit     = ifcfile.createIfcSIUnit(UnitType="FORCEUNIT", Prefix="KILO", Name="NEWTON")
+    illum_unit     = ifcfile.createIfcSIUnit(UnitType="ILLUMINANCEUNIT", Prefix=None, Name="LUX")
+    lum_flux_unit  = ifcfile.createIfcSIUnit(UnitType="LUMINOUSFLUXUNIT", Prefix=None, Name="LUMEN")
+    lum_int_unit   = ifcfile.createIfcSIUnit(UnitType="LUMINOUSINTENSITYUNIT", Prefix=None, Name="CANDELA")
+    pressure_unit  = ifcfile.createIfcSIUnit(UnitType="PRESSUREUNIT", Prefix=None, Name="PASCAL")
+
+    all_units = [
+        length_si_unit, area_si_unit, volume_si_unit, angle_si_unit,
+        mass_si_unit, time_si_unit, freq_si_unit, temp_si_unit, tempc_si_unit,
+        elec_i_unit, elec_v_unit, power_unit, force_unit,
+        illum_unit, lum_flux_unit, lum_int_unit, pressure_unit
+    ]
+    unit_assignment = ifcfile.createIfcUnitAssignment(all_units)
+    project_obj.UnitsInContext = unit_assignment
+
+    target_crs = ifcfile.create_entity(
+        "IfcCoordinateReferenceSystem",
+        Name="ETRS89 / UTM zone 32N"
+    )
+    source_crs = ifcfile.create_entity(
+        "IfcCoordinateReferenceSystem",
+        Name="Local Coordinate System"
+    )
+    map_conversion = ifcfile.create_entity(
+        "IfcMapConversion",
+        source_crs,
+        target_crs,
+        UTM_EASTING_ORIGIN,
+        UTM_NORTHING_ORIGIN,
+        UTM_HEIGHT_ORIGIN,
+        X_AXIS_ABSCISSA,
+        X_AXIS_ORDINATE,
+        MAP_SCALE
+    )
+    anchor_pt   = ifcfile.createIfcCartesianPoint((0.0, 0.0, 0.0))
+    anchor_axis = ifcfile.createIfcAxis2Placement3D(anchor_pt, None, None)
+    root_site_placement = ifcfile.createIfcLocalPlacement(PlacementRelTo=None, RelativePlacement=anchor_axis)
+    site_flurstueck = ifcfile.createIfcSite(
+        GlobalId=generate_ifc_guid(),
+        OwnerHistory=owner_history,
+        Name="Flurstuecke",
+        Description="Contains only flurstueck parcels",
+        ObjectType="FLURSTUECK",
+        ObjectPlacement=root_site_placement,
+        Representation=None,
+        LongName=None,
+        CompositionType="ELEMENT",
+        RefLatitude=None,
+        RefLongitude=None,
+        RefElevation=None
+    )
+    site_main = ifcfile.createIfcSite(
+        GlobalId=generate_ifc_guid(),
+        OwnerHistory=owner_history,
+        Name="SitePlan",
+        Description=None,
+        ObjectType=None,
+        ObjectPlacement=root_site_placement,
+        Representation=None,
+        LongName=None,
+        CompositionType="ELEMENT",
+        RefLatitude=None,
+        RefLongitude=None,
+        RefElevation=None
+    )
+
+    ifcfile.createIfcRelAggregates(
+        GlobalId=generate_ifc_guid(),
+        OwnerHistory=owner_history,
+        Name="Project to Site",
+        Description=None,
+        RelatingObject=project_obj ,
+        RelatedObjects=[site_flurstueck, site_main]
+    )
+    terrain_heights = []
+    for building in root.findall(f'.//{{{ns_bldg}}}Building'):
+        lod2_terrain = building.find(f'.//{{{ns_bldg}}}lod2TerrainIntersection')
+        if lod2_terrain is not None:
+            poslist_elem = lod2_terrain.find(f'.//{{{ns_gml}}}posList')
+            if poslist_elem is not None and poslist_elem.text:
+                coords = list(map(float, poslist_elem.text.strip().split()))
+                z_values = coords[2::3]
+                terrain_heights.extend(z_values)
+    if terrain_heights:
+        min_height = min(terrain_heights)
+    else:
+        min_height = 0.0
+    update_z_coordinates_simple(flurstueck_dict, min_height)
+    update_z_coordinates_simple(baugrenze_dict, min_height)
+    update_z_coordinates_simple(baulinie_dict, min_height)
+    ifcfile.create_entity(
+        "IfcRelAggregates",
+        GlobalId=generate_ifc_guid(),
+        OwnerHistory=owner_history,
+        Name="Project to Site",
+        Description="Project contains Site",
+        RelatingObject=project_obj,
+        RelatedObjects=[site_main]
+    )
+    context = ifcfile.createIfcGeometricRepresentationContext(
+        None,
+        "Model",
+        3,
+        0.01,
+        axis2placement,
+        axis_y
+    )
+    subcontext_axis = ifcfile.createIfcGeometricRepresentationSubContext(
+        "Axis", "Model", None, None, None, None, context, None, "MODEL_VIEW", None
+    )
+    subcontext_body = ifcfile.createIfcGeometricRepresentationSubContext(
+        "Body", "Model", None, None, None, None, context, None, "MODEL_VIEW", None
+    )
+    cityObjects = []
+    buildings   = []
+    other       = []
+
+    for obj in tree.iter(f'{{{ns_citygml}}}cityObjectMember'):
+        cityObjects.append(obj)
+    for cityObject in cityObjects:
+        for child in cityObject.iter():
+            if child.tag == f'{{{ns_bldg}}}Building':
+                buildings.append(child)
             else:
-                raise ValueError("Unsupported CityGML version or root tag.")
-        return tree, root, ns
+                other.append(child)
 
-    def _create_local_placement(self, placement_rel_to):
-        """ Helper to create an IfcLocalPlacement relative to another. """
-        origin = self.ifcfile.createIfcCartesianPoint((0.0, 0.0, 0.0))
-        axis2placement = self.ifcfile.createIfcAxis2Placement3D(origin, None, None)
-        return self.ifcfile.createIfcLocalPlacement(placement_rel_to, axis2placement)
-
-    def _create_building(self, building_element, ns):
-        """ Create IFC building and storey from a <Building> element. """
-        ifcfile = self.ifcfile
-        owner_history = self.owner_history
-        site = self.site
-
-        building_placement = self._create_local_placement(site.ObjectPlacement)
+        for building in buildings:
+            ifcsurfaceid_list = []
+        building_placement = create_ifclocalplacement(ifcfile, root_site_placement)
         ifcbuilding = ifcfile.createIfcBuilding(
             create_guid(),
             owner_history,
@@ -184,7 +377,7 @@ class CityGML2IFC:
             None,
         )
 
-        storey_placement = self._create_local_placement(building_placement)
+        storey_placement = create_ifclocalplacement(ifcfile, building_placement)
         building_storey = ifcfile.createIfcBuildingStorey(
             create_guid(),
             owner_history,
@@ -197,35 +390,37 @@ class CityGML2IFC:
             "ELEMENT",
             0.0,
         )
+        ifcfile.createIfcRelAggregates(
+            create_guid(),
+            owner_history,
+            "Site Container",
+            None,
+            site_main,
+            [ifcbuilding],
+        )
+        ifcfile.createIfcRelAggregates(
+            create_guid(),
+            owner_history,
+            "Building Container",
+            None,
+            ifcbuilding,
+            [building_storey],
+        )
 
-        # Aggregate relationships
-        ifcfile.createIfcRelAggregates(create_guid(), owner_history, "Site Container", None, site, [ifcbuilding])
-        ifcfile.createIfcRelAggregates(create_guid(), owner_history, "Building Container", None, ifcbuilding, [building_storey])
+        object_placement = create_ifclocalplacement(ifcfile, building_placement)
 
-        return ifcbuilding, building_storey
-
-    def _create_faces_for_building(self, ifcbuilding, building_element, building_storey, ns):
-        """ Convert CityGML surfaces to IFC elements and assign them. """
-        ifcfile = self.ifcfile
-        owner_history = self.owner_history
-        object_placement = self._create_local_placement(building_storey.ObjectPlacement)
-        ifcsurfaceid_list = []
-
-        # Find boundedBy elements
-        bounding = building_element.findall(f'.//{{{ns["bldg"]}}}boundedBy')
+        bounding = building.findall(f'.//{{{ns_bldg}}}boundedBy')
         if not bounding:
-            bounding = building_element.findall(f'.//{{{ns["core"]}}}boundedBy')
+            bounding = building.findall(f'.//{{{ns_core}}}boundedBy')
         if not bounding:
-            bounding = building_element.findall(f'.//{{{ns["core"]}}}boundary')
+            bounding = building.findall(f'.//{{{ns_core}}}boundary')
 
         for boundary in bounding:
-            surfaces = boundary.findall(f'.//{{{ns["gml"]}}}surfaceMember')
+            surfaces = boundary.findall(f'.//{{{ns_gml}}}surfaceMember')
             for Surface in surfaces:
-                pos = Surface.find(f'.//{{{ns["gml"]}}}posList')
-                if pos is None or pos.text is None:
-                    continue
+                pos = Surface.find(f'.//{{{ns_gml}}}posList')
                 bounding_points = get_boundingpoints(pos, O)
-
+                
                 polyline = create_ifc_poly(ifcfile, bounding_points, is_loop=False)
                 polyloop = create_ifc_poly(ifcfile, bounding_points, is_loop=True)
 
@@ -235,63 +430,98 @@ class CityGML2IFC:
                 surfacemodel = ifcfile.createIfcShellBasedSurfaceModel([openshell])
 
                 shaperepresentation = ifcfile.createIfcShapeRepresentation(
-                    self.context_body, "Body", "SurfaceModel", [surfacemodel]
+                    subcontext_body, "Body", "SurfaceModel", [surfacemodel]
                 )
                 axis_representation = ifcfile.createIfcShapeRepresentation(
-                    self.context_axis, "Axis", "Curve3D", [polyline]
+                    subcontext_axis, "Axis", "Curve3D", [polyline]
                 )
-                product_shape = ifcfile.createIfcProductDefinitionShape(None, None, [axis_representation, shaperepresentation])
+                product_shape = ifcfile.createIfcProductDefinitionShape(
+                    None, None, [axis_representation, shaperepresentation]
+                )
+                if (
+                    boundary.find(f'{{{ns_bldg}}}GroundSurface') or
+                    boundary.find(f'{{{ns_bldg}}}FloorSurface') or
+                    boundary.find(f'{{{ns_con}}}GroundSurface') or
+                    boundary.find(f'{{{ns_con}}}FloorSurface')
+                ):
+                    ifcslab = ifcfile.createIfcSlab(
+                        create_guid(),
+                        owner_history,
+                        "GroundSlab",
+                        None,
+                        None,
+                        object_placement,
+                        product_shape,
+                        None,
+                    )
+                    ifcsurfaceid_list.append(ifcslab)
 
-                # Decide IFC type
-                tag = boundary.tag
-                if "GroundSurface" in tag or "FloorSurface" in tag:
-                    elem = ifcfile.createIfcSlab(create_guid(), owner_history, "GroundSlab", None, None, object_placement, product_shape, None)
-                elif "RoofSurface" in tag:
-                    elem = ifcfile.createIfcRoof(create_guid(), owner_history, "RoofSlab", None, None, object_placement, product_shape, None, "FLAT_ROOF")
-                elif "WallSurface" in tag or "InteriorWallSurface" in tag:
-                    elem = ifcfile.createIfcWallStandardCase(create_guid(), owner_history, "Wall", None, None, object_placement, product_shape, None)
-                elif "CeilingSurface" in tag:
-                    elem = ifcfile.createIfcCovering(create_guid(), owner_history, "Covering", None, None, object_placement, product_shape, None)
-                else:
-                    continue
+                if (
+                    boundary.find(f'{{{ns_bldg}}}RoofSurface') or
+                    boundary.find(f'{{{ns_con}}}RoofSurface')
+                ):
+                    ifcroof = ifcfile.createIfcRoof(
+                        create_guid(),
+                        owner_history,
+                        "RoofSlab",
+                        None,
+                        None,
+                        object_placement,
+                        product_shape,
+                        None,
+                        "FLAT_ROOF",
+                    )
+                    ifcsurfaceid_list.append(ifcroof)
 
-                # Assign representation to element
-                elem.Representation = product_shape
-                ifcsurfaceid_list.append(elem)
+                if (
+                    boundary.find(f'{{{ns_bldg}}}WallSurface') or
+                    boundary.find(f'{{{ns_bldg}}}InteriorWallSurface') or
+                    boundary.find(f'{{{ns_con}}}WallSurface') or
+                    boundary.find(f'{{{ns_con}}}InteriorWallSurface')
+                ):
+                    ifcwall = ifcfile.createIfcWallStandardCase(
+                        create_guid(),
+                        owner_history,
+                        "Wall",
+                        None,
+                        None,
+                        object_placement,
+                        product_shape,
+                        None,
+                    )
+                    ifcsurfaceid_list.append(ifcwall)
 
-        # Link surfaces to storey
+                if (
+                    boundary.find(f'{{{ns_bldg}}}CeilingSurface') or
+                    boundary.find(f'{{{ns_con}}}CeilingSurface')
+                ):
+                    ifccovering = ifcfile.createIfcCovering(
+                        create_guid(),
+                        owner_history,
+                        "Covering",
+                        None,
+                        None,
+                        object_placement,
+                        product_shape,
+                        None,
+                    )
+                    ifcsurfaceid_list.append(ifccovering)
+
         if ifcsurfaceid_list:
-            ifcfile.createIfcRelContainedInSpatialStructure(create_guid(), owner_history, None, None, ifcsurfaceid_list, building_storey)
+            ifcfile.createIfcRelContainedInSpatialStructure(
+                create_guid(),
+                owner_history,
+                None,
+                None,
+                ifcsurfaceid_list,
+                building_storey,
+            )
+    ifcfile.write(filename)
 
-        # Combine all shapes for the building
-        building_shapes = [elem.Representation for elem in ifcsurfaceid_list if elem.Representation]
-        if building_shapes:
-            combined_shape = ifcfile.createIfcProductDefinitionShape(None, None, building_shapes)
-            ifcbuilding.Representation = combined_shape
-
-    def add_citygml(self, path: str):
-        """ Add CityGML buildings to the IFC model. """
-        tree, root, ns = self._parse_citygml(path)
-        for building_element in root.findall(f'.//{{{ns["bldg"]}}}Building'):
-            ifcbuilding, building_storey = self._create_building(building_element, ns)
-            self._create_faces_for_building(ifcbuilding, building_element, building_storey, ns)
-
-    def write_ifc(self, filename: str):
-        """ Save IFC to disk. """
-        if self.ifcfile is None:
-            raise ValueError("No IFC file to write.")
-        self.ifcfile.write(filename)
-        print(f"IFC file saved: {filename}")
-
-
-# Example usage:
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    #print(script_dir)
     data_folder = os.path.join(script_dir, "data")
     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
-    result_ifc = os.path.join(script_dir, "combined_.ifc")
-
-    transformer = CityGML2IFC(ifcfile=ifc, owner_history=owner_hist, site=site,
-                            storey=storey, context_body=context_b, context_axis=context_a)
-    transformer.add_citygml(citygml_source)
-    transformer.write_ifc("site_full.ifc")
+    result_ifc = os.path.join(script_dir,"combined_siteplan_data.ifc")
+    CityGML2IFC(citygml_source, result_ifc)
