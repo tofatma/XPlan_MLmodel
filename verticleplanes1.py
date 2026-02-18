@@ -102,6 +102,7 @@ flurstueck_dict = {
     }
 }
 
+
 Z_min = 0
 Z_max = 12  # extrusion height in mm
 

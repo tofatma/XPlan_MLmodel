@@ -399,7 +399,7 @@ class IFCTerrainWriter:
             RelatingObject=self.site,
             RelatedObjects=[terrain]
         )
-def export_ifc_unified(filename="site_full.ifc"):
+def export_ifc_unified(filename=str):
     from Xplan2IFC import main
 
     data = main()
@@ -427,7 +427,6 @@ def export_ifc_unified(filename="site_full.ifc"):
     ifc, context, project, site, building, storey, owner_hist, context_b, context_a = create_ifc_project()
     fill_style = create_fill_style(ifc)
     if all_points:
-        terrain_z_min = min(v[2] for v in vertices)
         create_site_solid(ifc, all_points, context, site, Z_min=terrain_z_min)
 
     Z_min_face = terrain_z_min
@@ -457,16 +456,13 @@ def export_ifc_unified(filename="site_full.ifc"):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.join(script_dir, "data")
     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
-
+    result_ifc = os.path.join(script_dir, "site_full.ifc")
     transformer = CityGML2IFC(
-        ifcfile=ifc,
-        owner_history=owner_hist,
-        site=site,
-        storey=storey,
-        context_body=context_b,
-        context_axis=context_a
-    )
-    transformer.write_ifc(filename)
-
+        path = citygml_source,
+        existing_ifc= ifc,
+        project_obj=project
+        )
+    transformer.write(result_ifc)
+    #ifc.write(result_ifc)
 if __name__ == "__main__":
     export_ifc_unified()

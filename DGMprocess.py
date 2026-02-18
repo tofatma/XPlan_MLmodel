@@ -64,7 +64,6 @@ import rasterio
 from owslib.wcs import WebCoverageService
 import ifcopenshell
 import ifcopenshell.api
-
 @dataclass
 class WCSConfig:
     url: str
@@ -113,15 +112,13 @@ class WCSTerrainSource:
     def download(self, bbox: List[float], out_path: str):
         clean = [round(float(v), 3) for v in bbox]
         response = self.wcs.getCoverage(
-            identifier=self.coverage_id,   # ← string only
+            identifier=self.coverage_id,
             subsets=[
                 ("x", clean[0], clean[2]),
                 ("y", clean[1], clean[3]),
             ],
             format=self.format,
         )
-
-
         with open(out_path, "wb") as f:
             f.write(response.read())
 class TerrainMesh:
@@ -129,8 +126,6 @@ class TerrainMesh:
         self.step = step
 
     def from_geotiff(self, path, utm_origin_x, utm_origin_y, step=2):
-        import rasterio
-        import numpy as np
         with rasterio.open(path) as src:
             elevations = src.read(1)
             transform = src.transform
@@ -167,16 +162,12 @@ class TerrainMesh:
 class IFCTerrainWriter:
     def __init__(self):
         self.model = ifcopenshell.api.run("project.create_file")
-
-        # Project
         self.project = ifcopenshell.api.run(
             "root.create_entity",
             self.model,
             ifc_class="IfcProject",
             name="Terrain Project"
         )
-
-        # Contexts
         self.model_context = ifcopenshell.api.run(
             "context.add_context",
             self.model,
@@ -190,8 +181,6 @@ class IFCTerrainWriter:
             target_view="MODEL_VIEW",
             parent=self.model_context
         )
-
-        # Site
         self.site = ifcopenshell.api.run(
             "root.create_entity",
             self.model,
@@ -224,27 +213,19 @@ class IFCTerrainWriter:
             product=terrain,
             matrix=np.identity(4)
         )
-
-        # --- Build the IFC Cartesian point list ---
         cartesian_points = self.model.create_entity(
             "IfcCartesianPointList3D",
-            CoordList=vertices  # list of [x,y,z] floats
+            CoordList=vertices
         )
-
-        # --- Build IFC polygonal faces ---
         polygonal_faces = [
             self.model.create_entity("IfcIndexedPolygonalFace", [i + 1 for i in face])
             for face in faces
         ]
-
-        # --- Create the face set ---
         face_set = self.model.create_entity(
             "IfcPolygonalFaceSet",
             Coordinates=cartesian_points,
             Faces=polygonal_faces
         )
-
-        # --- Wrap in shape representation ---
         shape_rep = self.model.create_entity(
             "IfcShapeRepresentation",
             ContextOfItems=self.body_context,
@@ -252,8 +233,6 @@ class IFCTerrainWriter:
             RepresentationIdentifier="Body",
             Items=[face_set]
         )
-
-        # Assign the representation to the terrain
         ifcopenshell.api.run(
             "geometry.assign_representation",
             self.model,

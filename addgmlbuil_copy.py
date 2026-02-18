@@ -112,7 +112,7 @@ def get_boundingpoints(pos: ET.Element, reference_point: Tuple[float, float, flo
 def update_z_coordinates_simple(geometry_dict, new_z):
     for obj in geometry_dict.values():
         obj["points"] = [[x, y, new_z] for x, y, z in obj["points"]]
-def CityGML2IFC(path: str, filename: str):
+def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None):
     """
     1) Read orientation_data via IFCFloorplanGenerator (unchanged).
     2) Parse CityGML and collect <Building> elements (unchanged).
@@ -120,6 +120,10 @@ def CityGML2IFC(path: str, filename: str):
     4) Directly create OwnerHistory, Project, Units, MapConversion, Site, Floorplan, Buildings.
     5) Write out via ifcfile.write(filename).
     """
+    if existing_ifc:
+        ifcfile = existing_ifc  # use your terrain IFC
+    else:
+        ifcfile = ifcopenshell.file(schema="IFC4X3")
     tree = ET.parse(path)
     root = tree.getroot()
     if root.tag == "{http://www.opengis.net/citygml/1.0}CityModel":
@@ -145,7 +149,7 @@ def CityGML2IFC(path: str, filename: str):
 
     else:
         raise ValueError("Unsupported CityGML version or root tag.")
-    ifcfile = ifcopenshell.file(schema="IFC4X3")
+    #ifcfile = ifcopenshell.file(schema="IFC4X3")
 
     creator_name   = "Fatma Ahmad (GIA)"
     organization   = "RWTH Aachen"
@@ -201,25 +205,26 @@ def CityGML2IFC(path: str, filename: str):
     axis2placement = ifcfile.createIfcAxis2Placement3D(origin_pt, dir_z, dir_x)
 
     axis_y = ifcfile.createIfcDirection((0.0, 1.0, 0.0))
+    true_north = ifcfile.create_entity("IfcDirection", DirectionRatios=[0.0, 1.0]) 
     geom_context = ifcfile.createIfcGeometricRepresentationContext(
         ContextIdentifier=None,
         ContextType="Model",
         CoordinateSpaceDimension=3,
         Precision=0.01,
         WorldCoordinateSystem=axis2placement,
-        TrueNorth=axis_y
+        TrueNorth=true_north
     )
     project_globalid = generate_ifc_guid()
-    project_obj  = ifcfile.createIfcProject(
-        GlobalId=project_globalid,
-        OwnerHistory=owner_history,
-        Name="Lageplan",
-        Description=None,
-        ObjectType=None,
-        LongName=None,
-        Phase=None,
-        RepresentationContexts=[geom_context]
-    )
+    # project_obj  = ifcfile.createIfcProject(
+    #     GlobalId=project_globalid,
+    #     OwnerHistory=owner_history,
+    #     Name="Lageplan",
+    #     Description=None,
+    #     ObjectType=None,
+    #     LongName=None,
+    #     Phase=None,
+    #     RepresentationContexts=[geom_context]
+    # )
 
     length_si_unit = ifcfile.createIfcSIUnit(UnitType="LENGTHUNIT", Prefix=None, Name="METRE")
     area_si_unit   = ifcfile.createIfcSIUnit(UnitType="AREAUNIT", Prefix=None, Name="SQUARE_METRE")
@@ -270,20 +275,20 @@ def CityGML2IFC(path: str, filename: str):
     anchor_pt   = ifcfile.createIfcCartesianPoint((0.0, 0.0, 0.0))
     anchor_axis = ifcfile.createIfcAxis2Placement3D(anchor_pt, None, None)
     root_site_placement = ifcfile.createIfcLocalPlacement(PlacementRelTo=None, RelativePlacement=anchor_axis)
-    site_flurstueck = ifcfile.createIfcSite(
-        GlobalId=generate_ifc_guid(),
-        OwnerHistory=owner_history,
-        Name="Flurstuecke",
-        Description="Contains only flurstueck parcels",
-        ObjectType="FLURSTUECK",
-        ObjectPlacement=root_site_placement,
-        Representation=None,
-        LongName=None,
-        CompositionType="ELEMENT",
-        RefLatitude=None,
-        RefLongitude=None,
-        RefElevation=None
-    )
+    # site_flurstueck = ifcfile.createIfcSite(
+    #     GlobalId=generate_ifc_guid(),
+    #     OwnerHistory=owner_history,
+    #     Name="Flurstuecke",
+    #     Description="Contains only flurstueck parcels",
+    #     ObjectType="FLURSTUECK",
+    #     ObjectPlacement=root_site_placement,
+    #     Representation=None,
+    #     LongName=None,
+    #     CompositionType="ELEMENT",
+    #     RefLatitude=None,
+    #     RefLongitude=None,
+    #     RefElevation=None
+    # )
     site_main = ifcfile.createIfcSite(
         GlobalId=generate_ifc_guid(),
         OwnerHistory=owner_history,
@@ -305,7 +310,7 @@ def CityGML2IFC(path: str, filename: str):
         Name="Project to Site",
         Description=None,
         RelatingObject=project_obj ,
-        RelatedObjects=[site_flurstueck, site_main]
+        RelatedObjects=[site_main]
     )
     terrain_heights = []
     for building in root.findall(f'.//{{{ns_bldg}}}Building'):
@@ -515,13 +520,17 @@ def CityGML2IFC(path: str, filename: str):
                 None,
                 ifcsurfaceid_list,
                 building_storey,
-            )
-    ifcfile.write(filename)
+             )
+    # if ifc_file:
+    #     ifcfile.write(ifc_file)
 
-if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    #print(script_dir)
-    data_folder = os.path.join(script_dir, "data")
-    citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
-    result_ifc = os.path.join(script_dir,"combined_siteplan_data.ifc")
-    CityGML2IFC(citygml_source, result_ifc)
+    return ifcfile
+            
+# if __name__ == "__main__":
+#     script_dir = os.path.dirname(os.path.abspath(__file__))
+#     #print(script_dir)
+#     data_folder = os.path.join(script_dir, "data")
+#     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
+#     result_ifc = os.path.join(script_dir,"combined_siteplan_data.ifc")
+#     ifc = CityGML2IFC(citygml_source, ifc_file=result_ifc)
+#     ifc.write(result_ifc)
