@@ -112,7 +112,7 @@ def get_boundingpoints(pos: ET.Element, reference_point: Tuple[float, float, flo
 def update_z_coordinates_simple(geometry_dict, new_z):
     for obj in geometry_dict.values():
         obj["points"] = [[x, y, new_z] for x, y, z in obj["points"]]
-def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None):
+def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None, site_main = None):
     """
     1) Read orientation_data via IFCFloorplanGenerator (unchanged).
     2) Parse CityGML and collect <Building> elements (unchanged).
@@ -289,20 +289,20 @@ def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None):
     #     RefLongitude=None,
     #     RefElevation=None
     # )
-    site_main = ifcfile.createIfcSite(
-        GlobalId=generate_ifc_guid(),
-        OwnerHistory=owner_history,
-        Name="SitePlan",
-        Description=None,
-        ObjectType=None,
-        ObjectPlacement=root_site_placement,
-        Representation=None,
-        LongName=None,
-        CompositionType="ELEMENT",
-        RefLatitude=None,
-        RefLongitude=None,
-        RefElevation=None
-    )
+    # site_main = ifcfile.createIfcSite(
+    #     GlobalId=generate_ifc_guid(),
+    #     OwnerHistory=owner_history,
+    #     Name="Pre_SitePlan",
+    #     Description=None,
+    #     ObjectType=None,
+    #     ObjectPlacement=root_site_placement,
+    #     Representation=None,
+    #     LongName=None,
+    #     CompositionType="ELEMENT",
+    #     RefLatitude=None,
+    #     RefLongitude=None,
+    #     RefElevation=None
+    # )
 
     ifcfile.createIfcRelAggregates(
         GlobalId=generate_ifc_guid(),

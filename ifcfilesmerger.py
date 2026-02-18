@@ -460,7 +460,8 @@ def export_ifc_unified(filename=str):
     transformer = CityGML2IFC(
         path = citygml_source,
         existing_ifc= ifc,
-        project_obj=project
+        project_obj=project,
+        site_main=site
         )
     transformer.write(result_ifc)
     #ifc.write(result_ifc)
