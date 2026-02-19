@@ -233,7 +233,7 @@ def create_site_solid(ifc, points, context, site, Z_min=0.0):
     shape_rep = ifc.create_entity(
         "IfcShapeRepresentation",
         ContextOfItems=context,
-        RepresentationIdentifier="Footprint",
+        RepresentationIdentifier="Body",
         RepresentationType="SurfaceModel",
         Items=[surface_model]
     )
