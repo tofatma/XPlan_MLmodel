@@ -13,9 +13,7 @@ from Xplan2IFC import main as xplan_main
 from addGMLbuild import CityGML2IFC
 import os
 import ifcopenshell
-# -------------------
-# IFC Project Creation
-# -------------------
+
 def create_ifc_project(schema="IFC4X3_ADD2"):
     ifc = ifcopenshell.file(schema=schema)
     ifc.header.file_description.description = ("ViewDefinition [ReferenceView]",)
@@ -112,9 +110,6 @@ def create_ifc_project(schema="IFC4X3_ADD2"):
 
     return ifc, context, project, site, building, storey, owner_hist, subcontext_body, subcontext_axis
 
-# -------------------
-# Site Solid (Flurstück)
-# -------------------
 def create_fill_style(ifc):
     """Creates a yellow diagonal hatch fill style."""
     yellow = ifc.create_entity("IfcColourRgb", Red=1.0, Green=1.0, Blue=0.0)
@@ -408,7 +403,7 @@ def export_ifc_unified(filename=str):
                     if not unique_pts or pt != unique_pts[-1]:
                         unique_pts.append(pt)
                 if len(unique_pts) >= 3:
-                    create_virtual_element(ifc, unique_pts, context, storey, name=f"{name}_face_{i+1}")
+                    create_virtual_element(ifc, unique_pts, context, site, name=f"{name}_face_{i+1}")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_folder = os.path.join(script_dir, "data")
     citygml_source = os.path.join(data_folder, "Lod2existingbuilding.gml")
