@@ -13,6 +13,7 @@ from Xplan2IFC import main as xplan_main
 from addGMLbuild import CityGML2IFC
 import os
 import ifcopenshell
+import math
 
 def create_ifc_project(schema="IFC4X3_ADD2"):
     ifc = ifcopenshell.file(schema=schema)
@@ -109,7 +110,46 @@ def create_ifc_project(schema="IFC4X3_ADD2"):
     ifc.create_entity("IfcRelAggregates", GlobalId=new_guid(), RelatingObject=building, RelatedObjects=[storey])
 
     return ifc, context, project, site, building, storey, owner_hist, subcontext_body, subcontext_axis
-
+def create_ifcmapcnoversionscaled(ifcfile,local_p1, utm_1, local_p2, utm_2, orthoHeight, scale):
+    x1,y1,z1 = local_p1
+    E1, N1, H1 = utm_1
+    x2,y2,z2 = local_p2
+    E2, N2, H2 = utm_2
+    dx = x2-x1
+    dy = y2-y1
+    dN = N2-N1
+    dE = E2-E1
+    L_local = math.sqrt(dx*dx + dy*dy)
+    L_map = math.sqrt(dE*dE +dN*dN)
+    XAbsicca = dE / L_map
+    XOrdinate = dN / L_map
+    F_x = 0.99996069
+    F_y = 0.99996069
+    F_z = 1.0
+    target_crs = ifcfile.create_entity(
+        "IfcCoordinateReferenceSystem",
+        Name="ETRS89 / UTM zone 32N"
+    )
+    source_crs = ifcfile.create_entity(
+        "IfcCoordinateReferenceSystem",
+        Name="Local Coordinate System"
+    )
+    mapscale_conversion = ifcfile.create_entity(
+        "IfcMapConversionScaled",
+        source_crs,
+        target_crs,
+        E1,
+        N1,
+        orthoHeight,
+        XAbsicca,
+        XOrdinate,
+        scale,
+        F_x,
+        F_y,
+        F_z
+    )
+    return mapscale_conversion
+    
 def create_fill_style(ifc):
     """Creates a yellow diagonal hatch fill style."""
     yellow = ifc.create_entity("IfcColourRgb", Red=1.0, Green=1.0, Blue=0.0)
@@ -357,13 +397,11 @@ def export_ifc_unified(filename=str):
     flurstueck_dict = data.get("flurstueck_dict", {})
     baugrenze_dict = data.get("baugrenze_dict", {})
     baulinie_dict = data.get("baulinie_dict", {})
-    generator = data["generator"]
-
+    generator = data["generator"]    
     all_points = []
     for item in flurstueck_dict.values():
         all_points.extend(item["points"])
-    bbox = BBoxBuilder(generator.origin_x, generator.origin_y).from_local_points(all_points, margin=20.0)
-
+    bbox = BBoxBuilder(generator.UTM_EASTING_ORIGIN, generator.UTM_NORTHING_ORIGIN).from_local_points(all_points, margin=20.0)
     wcs_source = WCSTerrainSource(WCSConfig(url="https://www.wcs.nrw.de/geobasis/wcs_nw_dgm"))
     wcs_source.download(bbox, "nrw_dgm.tif")
 
@@ -414,6 +452,14 @@ def export_ifc_unified(filename=str):
         project_obj=project,
         site_main=site
         )
+    utm_p1 = generator.utm_1
+    utm_p2 = generator.utm_2
+    local_1 = generator.local1
+    local_2 = generator.local2
+    scale_RWTHapp = generator.MAP_SCALE
+    orthogonalHeight = terrain_z_min
+    mapconversionentity = create_ifcmapcnoversionscaled(ifc,local_1, utm_p1, local_2, utm_p2, orthogonalHeight, scale_RWTHapp)
+    
     transformer.write(result_ifc)
     #ifc.write(result_ifc)
 if __name__ == "__main__":

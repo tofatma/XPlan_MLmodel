@@ -32,6 +32,10 @@ class IFCFloorplanGenerator:
         self.X_AXIS_ORDINATE =0
         self.MAP_SCALE = 1.0
         self.angle= 0.0
+        self.local1=0.0
+        self.local2=0.0
+        self.utm_1 = 0.0
+        self.utm_2 = 0.0
         if georeferencing_info_path:
             self.load_wld3_values(georeferencing_info_path)
     def load_wld3_values(self, wld3_path):
@@ -46,7 +50,10 @@ class IFCFloorplanGenerator:
             return local, utm
         local1, utm1 = parse_line(lines[0])
         local2, utm2 = parse_line(lines[1])
-        
+        self.local1 = local1
+        self.local2 = local2
+        self.utm_1 = utm1
+        self.utm_2 = utm2
         dx = utm2[0] - utm1[0]
         dy = utm2[1] - utm1[1]
 

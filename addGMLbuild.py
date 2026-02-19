@@ -2,15 +2,10 @@
 the entire site plan. The terrain height is included in the XPlannung objects.
 The existing building is also added."""
 from ifcopenshell.guid import new as new_guid
-import os
-import sys
 import time
 import uuid
-import tempfile
-import itertools
 from typing import List, Tuple, Union
 import xml.etree.ElementTree as ET
-import numpy as np
 import math
 from pyproj import Transformer
 import ifcopenshell
@@ -37,7 +32,6 @@ def generate_ifc_guid() -> str:
 create_guid = generate_ifc_guid
 data= main()
 generator = data["generator"]
-#vertical_faces = data["vertical_faces"]
 flurstueck_dict = data["flurstueck_dict"]
 baugrenze_dict = data["baugrenze_dict"] 
 baulinie_dict = data["baulinie_dict"]
@@ -151,7 +145,7 @@ def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None, si
         raise ValueError("Unsupported CityGML version or root tag.")
     #ifcfile = ifcopenshell.file(schema="IFC4X3")
 
-    creator_name   = "Fatma Ahmad (GIA)"
+    creator_name   = "Ahmad (GIA)"
     organization   = "RWTH Aachen"
     application    = "Autodesk Revit 2025.4 (DEU)"
     application_ver= "2025"
@@ -253,25 +247,25 @@ def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None, si
     unit_assignment = ifcfile.createIfcUnitAssignment(all_units)
     project_obj.UnitsInContext = unit_assignment
 
-    target_crs = ifcfile.create_entity(
-        "IfcCoordinateReferenceSystem",
-        Name="ETRS89 / UTM zone 32N"
-    )
-    source_crs = ifcfile.create_entity(
-        "IfcCoordinateReferenceSystem",
-        Name="Local Coordinate System"
-    )
-    map_conversion = ifcfile.create_entity(
-        "IfcMapConversion",
-        source_crs,
-        target_crs,
-        UTM_EASTING_ORIGIN,
-        UTM_NORTHING_ORIGIN,
-        UTM_HEIGHT_ORIGIN,
-        X_AXIS_ABSCISSA,
-        X_AXIS_ORDINATE,
-        MAP_SCALE
-    )
+    # target_crs = ifcfile.create_entity(
+    #     "IfcCoordinateReferenceSystem",
+    #     Name="ETRS89 / UTM zone 32N"
+    # )
+    # source_crs = ifcfile.create_entity(
+    #     "IfcCoordinateReferenceSystem",
+    #     Name="Local Coordinate System"
+    # )
+    # map_conversion = ifcfile.create_entity(
+    #     "IfcMapConversion",
+    #     source_crs,
+    #     target_crs,
+    #     UTM_EASTING_ORIGIN,
+    #     UTM_NORTHING_ORIGIN,
+    #     UTM_HEIGHT_ORIGIN,
+    #     X_AXIS_ABSCISSA,
+    #     X_AXIS_ORDINATE,
+    #     MAP_SCALE
+    # )
     anchor_pt   = ifcfile.createIfcCartesianPoint((0.0, 0.0, 0.0))
     anchor_axis = ifcfile.createIfcAxis2Placement3D(anchor_pt, None, None)
     root_site_placement = ifcfile.createIfcLocalPlacement(PlacementRelTo=None, RelativePlacement=anchor_axis)
@@ -312,22 +306,6 @@ def CityGML2IFC(path: str, ifc_file=None,existing_ifc=None,project_obj =None, si
         RelatingObject=project_obj ,
         RelatedObjects=[site_main]
     )
-    terrain_heights = []
-    for building in root.findall(f'.//{{{ns_bldg}}}Building'):
-        lod2_terrain = building.find(f'.//{{{ns_bldg}}}lod2TerrainIntersection')
-        if lod2_terrain is not None:
-            poslist_elem = lod2_terrain.find(f'.//{{{ns_gml}}}posList')
-            if poslist_elem is not None and poslist_elem.text:
-                coords = list(map(float, poslist_elem.text.strip().split()))
-                z_values = coords[2::3]
-                terrain_heights.extend(z_values)
-    if terrain_heights:
-        min_height = min(terrain_heights)
-    else:
-        min_height = 0.0
-    update_z_coordinates_simple(flurstueck_dict, min_height)
-    update_z_coordinates_simple(baugrenze_dict, min_height)
-    update_z_coordinates_simple(baulinie_dict, min_height)
     ifcfile.create_entity(
         "IfcRelAggregates",
         GlobalId=generate_ifc_guid(),
