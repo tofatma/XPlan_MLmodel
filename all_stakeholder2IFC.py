@@ -1,51 +1,7 @@
-# import ifcopenshell
-
-# file1 = ifcopenshell.open("allsitewith2floorbuild_de2025.ifc")
-# file2 = ifcopenshell.open("combined_siteplan_data.ifc")
-
-# # Merge file2 into file1
-# for e in file2:
-#     if e.is_a() != "IfcProject":
-#         file1.add(e)
-
-# file1.write("combined2ifcs.ifc")
-# import ifcopenshell
-# import ifcopenshell.guid
-
-# file1 = ifcopenshell.open("siteF_BBBL.ifc")
-# file2 = ifcopenshell.open("combined_siteplan_data.ifc")# site + site objects + buildings
-
-# main_site = file1.by_type("IfcSite")[0]
-# copied = {}
-
-# def copy_building(building, parent_site):
-#     """Copy a building and its children under an existing site."""
-#     if building.id() in copied:
-#         return copied[building.id()]
-
-#     new_building = file2.add(building)
-#     copied[building.id()] = new_building
-
-#     file2.create_entity(
-#         "IfcRelAggregates",
-#         GlobalId=ifcopenshell.guid.new(),
-#         RelatingObject=parent_site,
-#         RelatedObjects=[new_building]
-#     )
-#     for rel in getattr(building, "IsDecomposedBy", []):
-#         for child in rel.RelatedObjects:
-#             copy_building(child, new_building)
-
-#     for rel in getattr(building, "ContainsElements", []):
-#         for child in rel.RelatedElements:
-#             copy_building(child, new_building)
-
-#     return new_building
-# for building in file1.by_type("IfcBuilding"):
-#     copy_building(building, main_site)
-
-# file2.write("merged_.ifc")
-# print("Merge complete: merged.ifc")import ifcopenshell
+"""This script creates IFCProject and site and introduces the surrounding model and terrain
+to the correct height form the DGM. It takes the surrounding buildings form the script
+addGMLbuild.py and adds it to the same site and project as the surrounding model, BL and BG
+"""
 from ifcopenshell.guid import new as new_guid
 import time
 from dataclasses import dataclass
@@ -54,7 +10,7 @@ import numpy as np
 import rasterio
 from owslib.wcs import WebCoverageService
 from Xplan2IFC import main as xplan_main
-from addgmlbuil_copy import CityGML2IFC
+from addGMLbuild import CityGML2IFC
 import os
 import ifcopenshell
 # -------------------
