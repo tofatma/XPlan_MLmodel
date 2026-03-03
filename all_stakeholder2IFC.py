@@ -9,7 +9,7 @@ from typing import List, Tuple
 import numpy as np
 import rasterio
 from owslib.wcs import WebCoverageService
-from Xplan2IFC import main as xplan_main
+from Xplan2IFC import main
 from addGMLbuild import CityGML2IFC
 import os
 import ifcopenshell
@@ -313,10 +313,12 @@ class TerrainMesh:
         n_rows_ds = (n_rows - 1) // step + 1
         n_cols_ds = (n_cols - 1) // step + 1
         vertices = []
+        vertices_UTM = []
         for r in range(0, n_rows, step):
             for c in range(0, n_cols, step):
                 x, y = rasterio.transform.xy(transform, r, c)
                 z = float(elevations[r, c])
+                vertices_UTM.append([float(x), float(y), z])
                 vertices.append([float(x - utm_origin_x), float(y - utm_origin_y), z])
         faces = []
         def idx(r, c): return r * n_cols_ds + c
@@ -324,7 +326,7 @@ class TerrainMesh:
             for c in range(n_cols_ds - 1):
                 faces.append([idx(r, c), idx(r + 1, c), idx(r, c + 1)])
                 faces.append([idx(r, c + 1), idx(r + 1, c), idx(r + 1, c + 1)])
-        return vertices, faces
+        return vertices, vertices_UTM, faces
 
 class IFCTerrainWriter:
     """
@@ -347,7 +349,6 @@ class IFCTerrainWriter:
         vertices : list of [x, y, z]
         faces    : list of index triples [i0, i1, i2]
         """
-        # --- Cartesian points and faces ---
         cart_points = self.model.create_entity("IfcCartesianPointList3D", CoordList=vertices)
         polygon_faces = [
             self.model.create_entity("IfcIndexedPolygonalFace", [i + 1 for i in face])
@@ -358,8 +359,6 @@ class IFCTerrainWriter:
             Coordinates=cart_points,
             Faces=polygon_faces
         )
-
-        # --- Shape representation ---
         shape_rep = self.model.create_entity(
             "IfcShapeRepresentation",
             ContextOfItems=self.context,
@@ -367,14 +366,10 @@ class IFCTerrainWriter:
             RepresentationIdentifier="Body",
             Items=[face_set]
         )
-
-        # --- Product definition shape ---
         prod_def = self.model.create_entity(
             "IfcProductDefinitionShape",
             Representations=[shape_rep]
         )
-
-        # --- Create terrain entity attached to site ---
         terrain = self.model.create_entity(
             "IfcGeographicElement",
             GlobalId=new_guid(),
@@ -382,17 +377,13 @@ class IFCTerrainWriter:
             ObjectPlacement=self.site.ObjectPlacement,
             Representation=prod_def
         )
-
-        # --- Aggregate in site ---
         self.model.create_entity(
             "IfcRelAggregates",
             GlobalId=new_guid(),
             RelatingObject=self.site,
             RelatedObjects=[terrain]
         )
-def export_ifc_unified(filename=str):
-    from Xplan2IFC import main
-
+def export_ifc_unified():
     data = main()
     flurstueck_dict = data.get("flurstueck_dict", {})
     baugrenze_dict = data.get("baugrenze_dict", {})
@@ -406,13 +397,11 @@ def export_ifc_unified(filename=str):
     wcs_source.download(bbox, "nrw_dgm.tif")
 
     terrain_mesh = TerrainMesh()
-    vertices, faces = terrain_mesh.from_geotiff("nrw_dgm.tif", generator.origin_x, generator.origin_y, step=2)
+    vertices, vertices_UTM, faces = terrain_mesh.from_geotiff("nrw_dgm.tif", generator.origin_x, generator.origin_y, step=2)
 
-    # Compute terrain Z_min for Flurstücks
     terrain_z_values = [v[2] for v in vertices]
     terrain_z_min = min(terrain_z_values)
 
-    # Create IFC project
     ifc, context, project, site, building, storey, owner_hist, context_b, context_a = create_ifc_project()
     fill_style = create_fill_style(ifc)
     if all_points:
@@ -461,6 +450,8 @@ def export_ifc_unified(filename=str):
     mapconversionentity = create_ifcmapcnoversionscaled(ifc,local_1, utm_p1, local_2, utm_p2, orthogonalHeight, scale_RWTHapp)
     
     transformer.write(result_ifc)
+    return vertices,vertices_UTM, faces, Z_min_face
     #ifc.write(result_ifc)
 if __name__ == "__main__":
-    export_ifc_unified()
+    vertices, vertices_utm, faces, z_min= export_ifc_unified()
+    print(f"z min i s{z_min}")
